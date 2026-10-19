@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="pt-BR"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Kokō — The Climber</title>
+<style>
+*{box-sizing:border-box;margin:0}html,body{height:100%;overflow:hidden;background:#05070c;color:#e9e4da;font-family:Georgia,'Times New Roman',serif;user-select:none;touch-action:none}
+canvas{position:fixed;inset:0}
+.vig{position:fixed;inset:0;pointer-events:none;background:radial-gradient(ellipse at center,transparent 55%,rgba(0,0,0,.65))}
+#hud{position:fixed;top:0;left:0;right:0;padding:14px 18px;display:flex;justify-content:space-between;align-items:flex-start;pointer-events:none;letter-spacing:.08em;font-size:13px;text-transform:uppercase}
+#hud b{display:block;font-size:20px;letter-spacing:.04em;text-transform:none}
+.bar{width:220px;height:12px;background:#ffffff22;border:1px solid #ffffff66;margin:6px 0 0 auto}.bar i{display:block;height:100%;width:100%;background:#d94f3d}
+#mono{position:fixed;left:8%;right:8%;bottom:22%;text-align:center;font-size:clamp(18px,3.2vw,30px);font-style:italic;text-shadow:0 2px 18px #000;pointer-events:none;opacity:0}
+#warn{position:fixed;top:30%;width:100%;text-align:center;font-size:42px;letter-spacing:.3em;color:#cfe6ff;opacity:0;pointer-events:none}
+.pad{position:fixed;right:14px;bottom:14px;display:grid;grid-template-columns:repeat(3,54px);gap:6px}
+.pad button,.btn{background:#ffffff18;border:1px solid #ffffff44;color:#fff;font:inherit;border-radius:6px;padding:10px;cursor:pointer;backdrop-filter:blur(6px)}
+.pad button{height:54px;font-size:20px}.pad .r{grid-column:1/4;height:40px;font-size:13px}
+#menu{position:fixed;inset:0;background:linear-gradient(#05070ccc,#05070cf2);display:flex;align-items:center;justify-content:center;overflow:auto;padding:20px}
+.card{max-width:760px;width:100%}
+h1{font-size:clamp(34px,7vw,68px);font-weight:400;letter-spacing:.12em}h1 small{display:block;font-size:14px;letter-spacing:.5em;opacity:.6;margin-top:6px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px;margin:18px 0}
+.ch{text-align:left}.ch[disabled]{opacity:.3;cursor:not-allowed}.ch small{display:block;opacity:.65;margin-top:4px}
+.slot{display:flex;gap:6px;align-items:center;margin:6px 0}.slot span{flex:1}.slot.on{outline:1px solid #d94f3d}
+.sub{font-size:12px;opacity:.6;margin-top:14px;line-height:1.5}
+.cb{position:fixed;left:0;right:0;height:0;background:#000;pointer-events:none;z-index:5}.cb.t{top:0}.cb.b{bottom:0}#fade{position:fixed;inset:0;background:#000;opacity:0;pointer-events:none;z-index:6}
+#sub{position:fixed;left:10%;right:10%;bottom:15vh;text-align:center;font-size:clamp(17px,2.6vw,26px);line-height:1.5;text-shadow:0 2px 14px #000;pointer-events:none;opacity:0;z-index:7}#sub b{display:block;font-size:.6em;letter-spacing:.35em;text-transform:uppercase;color:#d94f3d;margin-bottom:6px}
+</style></head><body>
+<div class="vig"></div>
+<div id="hud"><div><b id="cT">—</b><span id="cS"></span></div><div style="text-align:right"><b id="alt">0 m</b>ESTAMINA<div class="bar"><i id="st"></i></div><span id="stl" style="font-size:12px"></span></div></div>
+<div class="cb t"></div><div class="cb b"></div><div id="fade"></div><div id="sub"></div><div id="warn">VENTO</div><div id="mono"></div>
+<div class="pad"><span></span><button data-k="0,1">▲</button><span></span><button data-k="-1,0">◀</button><button data-k="0,-1">▼</button><button data-k="1,0">▶</button><button class="r" id="rest">DESCANSAR (ESPAÇO)</button></div>
+<div id="menu"><div class="card">
+<h1>KOKŌ<small>A ESCALADA DE MORI BUNTARŌ</small></h1>
+<p class="sub" style="font-size:14px;opacity:.8">Setas/WASD escolhem o próximo apoio · Espaço descansa · não deixe a estamina zerar. Inspirado em <i>Kokō no Hito</i> (The Climber), de Shinichi Sakamoto. Projeto de fã, sem uso de arte original.</p>
+<h3 style="margin-top:18px;font-weight:400;letter-spacing:.2em">MODO HISTÓRIA</h3><div class="grid" id="chs"></div>
+<h3 style="font-weight:400;letter-spacing:.2em">SAVES</h3><div id="slots"></div><button class="btn" id="newSave">+ Novo save</button>
+<p class="sub" id="dbS"></p></div></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script>
+/* ===== CONFIG SUPABASE (Project Settings > API). Vazio = salva no localStorage ===== */
+const SB_URL='', SB_KEY='';
+
+/* ===== Arcos (espelham a tabela chapters/monologues) ===== */
+const CH=[
+{id:1,t:'O Prédio',s:'O primeiro salto, sem corda',H:22,base:0,wind:0,cold:0,sky:['#31465e','#d9a47a'],rock:'#6b6a6e',
+ m:[[.3,'Ninguém olha para mim. Hoje, todos olham.'],[.75,'Sem corda. Sem medo. Só o próximo apoio.'],[1,'Lá em cima, o mundo ficou pequeno.']]},
+{id:2,t:'O Clube',s:'A pedra ensina a respirar',H:30,base:300,wind:.1,cold:0,sky:['#27425f','#e8b98a'],rock:'#77716c',
+ m:[[.5,'A rocha não mente. Ou você segura, ou cai.'],[1,'Pela primeira vez, eu tinha um lugar.']]},
+{id:3,t:'O Vazio',s:'Solidão e trabalho; a montanha como refúgio',H:36,base:900,wind:.2,cold:.2,sky:['#0b1020','#3a3f66'],rock:'#4d4f5c',
+ m:[[.4,'Sozinho eu sempre estive. Agora escolho estar.'],[1,'Silêncio. Era isso que eu procurava.']]},
+{id:4,t:'A Decepção',s:'O reencontro com Miyamoto',H:44,base:2200,wind:.4,cold:.3,sky:['#1c2b3f','#9fb4c8'],rock:'#5f6670',
+ m:[[.5,'Era ele quem me trouxe até aqui. E agora?'],[1,'Decepção também é altitude. Dói do mesmo jeito.']]},
+{id:5,t:'A Parede de Gelo',s:'O frio que afasta todos',H:52,base:5200,wind:.7,cold:.7,sky:['#10202e','#b9d3e6'],rock:'#8fa3b3',
+ m:[[.5,'O frio entra nos ossos. Eu continuo.'],[1,'Não existe volta fácil. Só existe a próxima fenda.']]},
+{id:6,t:'K2, Face Leste',s:'A face intocada',H:70,base:7900,wind:1,cold:1,sky:['#05080f','#6f87a3'],rock:'#9aa7b4',
+ m:[[.35,'Nenhum homem pisou aqui. Nenhum.'],[.7,'Cada respiração custa uma vida inteira.'],[1,'Subir é a única resposta que eu conheço.']]}];
+
+/* ===== Camada de dados: Supabase ou localStorage (mesma API de CRUD) ===== */
+let sb=null,uid='local';
+const L=t=>JSON.parse(localStorage.getItem('tc_'+t)||'[]'),W=(t,a)=>localStorage.setItem('tc_'+t,JSON.stringify(a));
+const db={
+ async list(t){if(sb){const{data}=await sb.from(t).select('*').order('created_at',{ascending:false});return data||[]}return L(t)},
+ async ins(t,row){if(sb){const{data}=await sb.from(t).insert(row).select().single();return data}
+  const r={...row,id:crypto.randomUUID(),created_at:new Date().toISOString()};W(t,[r,...L(t)]);return r},
+ async upd(t,id,p){if(sb)await sb.from(t).update(p).eq('id',id);else W(t,L(t).map(r=>r.id==id?{...r,...p}:r))},
+ async del(t,id){if(sb)await sb.from(t).delete().eq('id',id);else W(t,L(t).filter(r=>r.id!=id))}};
+async function initDb(){
+ try{if(SB_URL&&window.supabase){sb=supabase.createClient(SB_URL,SB_KEY);
+  let{data:{session}}=await sb.auth.getSession();if(!session){session=(await sb.auth.signInAnonymously()).data.session}uid=session.user.id}}catch(e){sb=null}
+ $('#dbS').textContent=sb?'Conectado ao Supabase.':'Modo offline (localStorage). Preencha SB_URL e SB_KEY para usar o Supabase.'}
+
+/* ===== Estado ===== */
+const $=s=>document.querySelector(s);
+let save=null,chap=CH[0],holds=[],cur=null,stam=100,state='menu',moves=0,t0=0,maxP=0,shown=new Set(),idle=0,resting=false,gust=8;
+
+/* ===== Cena 3D ===== */
+const R=new THREE.WebGLRenderer({antialias:true});R.setPixelRatio(Math.min(devicePixelRatio,2));R.setSize(innerWidth,innerHeight);
+R.toneMapping=THREE.ACESFilmicToneMapping;document.body.prepend(R.domElement);
+const scene=new THREE.Scene(),cam=new THREE.PerspectiveCamera(55,innerWidth/innerHeight,.1,900);
+const world=new THREE.Group();scene.add(world);
+const hemi=new THREE.HemisphereLight(0xbcd2ff,0x2a2a30,.9),sun=new THREE.DirectionalLight(0xffd9a8,1.6);sun.position.set(-8,20,14);scene.add(hemi,sun);
+const noise=(x,y)=>Math.sin(x*.9+y*.4)*.25+Math.sin(x*.3-y*.8)*.3+Math.sin(x*2.1+y*1.7)*.08;
+const fbm=x=>Math.sin(x*.07)*8+Math.sin(x*.19+2)*4+Math.sin(x*.43+5)*1.5;
+const hand=new THREE.Group(),body=new THREE.Group();
+(()=>{const M=c=>new THREE.MeshStandardMaterial({color:c,roughness:.8});
+ const tor=new THREE.Mesh(new THREE.BoxGeometry(.5,.8,.3),M(0xc43d2e));tor.position.y=-.3;
+ const head=new THREE.Mesh(new THREE.SphereGeometry(.2,16,12),M(0xe8c3a0));head.position.y=.3;
+ const hair=new THREE.Mesh(new THREE.SphereGeometry(.21,16,12,0,6.3,0,1.4),M(0x1a1410));hair.position.y=.32;
+ const leg=new THREE.Mesh(new THREE.BoxGeometry(.4,.8,.25),M(0x2b3446));leg.position.y=-1.1;
+ const dk=new THREE.MeshStandardMaterial({color:0x120d0a});
+ for(const x of[-1,1]){const e=new THREE.Mesh(new THREE.SphereGeometry(.028,8,6),dk);e.position.set(x*.07,.32,-.185);const br=new THREE.Mesh(new THREE.BoxGeometry(.1,.02,.02),dk);br.position.set(x*.07,.38,-.19);br.rotation.z=x*.35;head.add(e,br)}
+ body.add(tor,head,hair,leg);
+ for(const x of[-.25,.25]){const h=new THREE.Mesh(new THREE.SphereGeometry(.1,10,8),M(0xe8c3a0));h.position.set(x,.5,0);hand.add(h)}})();
+scene.add(body,hand);
+let snow;{const g=new THREE.BufferGeometry(),a=new Float32Array(900);for(let i=0;i<a.length;i++)a[i]=(Math.random()-.5)*40;
+ g.setAttribute('position',new THREE.BufferAttribute(a,3));snow=new THREE.Points(g,new THREE.PointsMaterial({color:0xffffff,size:.09,transparent:true,opacity:.85}));scene.add(snow)}
+
+function buildChapter(c){
+ world.clear();const H=c.H;
+ const cv=document.createElement('canvas');cv.width=2;cv.height=256;const x=cv.getContext('2d'),g=x.createLinearGradient(0,0,0,256);
+ g.addColorStop(0,c.sky[0]);g.addColorStop(1,c.sky[1]);x.fillStyle=g;x.fillRect(0,0,2,256);scene.background=new THREE.CanvasTexture(cv);
+ const fog=new THREE.Color(c.sky[1]);scene.fog=new THREE.Fog(fog,25,260+c.cold*-60);
+ sun.color.set(c.id==3?0x9bb4ff:c.cold>.5?0xdfeeff:0xffd9a8);sun.intensity=c.id==3?.9:1.6;
+ for(let i=0;i<6;i++){const s=new THREE.Shape(),w=300;s.moveTo(-w,-80);
+  for(let k=-w;k<=w;k+=3)s.lineTo(k,30+i*7+fbm(k+i*91)*(1+i*.3)+Math.abs(Math.sin(k*.05+i))*7*(i+1)*.4);s.lineTo(w,-80);
+  const col=new THREE.Color(c.rock).multiplyScalar(.45).lerp(fog,i/5.5);
+  const m=new THREE.Mesh(new THREE.ShapeGeometry(s),new THREE.MeshBasicMaterial({color:col,fog:false}));m.position.set(0,-10+i*3+H*.12,-70-i*55);m.scale.set(1+i*.4,1+i*.25,1);world.add(m)}
+ const wg=new THREE.PlaneGeometry(16,H+10,32,Math.round(H+10)).translate(0,H/2-3,0),p=wg.attributes.position;
+ for(let i=0;i<p.count;i++)p.setZ(i,noise(p.getX(i),p.getY(i)));wg.computeVertexNormals();
+ world.add(new THREE.Mesh(wg,new THREE.MeshStandardMaterial({color:c.rock,roughness:.95,flatShading:true})));
+ holds=[];const hm=new THREE.MeshStandardMaterial({color:new THREE.Color(c.rock).offsetHSL(0,0,.18),roughness:.7,flatShading:true});
+ for(let r=0;r<=H;r++)for(let k=-3;k<=3;k++){if(r>0&&Math.random()>.62)continue;
+  const hx=k*1.1+(Math.random()-.5)*.5,hy=r+(Math.random()-.5)*.4;addHold(hx,hy,hm)}
+ addHold(0,H,new THREE.MeshStandardMaterial({color:0xffd27a,emissive:0xffa530,emissiveIntensity:.8}),true);
+ for(let k=0;k<4;k++){const l=new THREE.PointLight(0xffa530,0,12);l.position.set(0,H,2);}
+ cur=holds.reduce((a,b)=>Math.hypot(b.pos.x,b.pos.y)<Math.hypot(a.pos.x,a.pos.y)?b:a);
+ placePlayer(cur);}
+function addHold(x,y,mat,top){const m=new THREE.Mesh(new THREE.IcosahedronGeometry(top?.3:.17+Math.random()*.08,0),mat);
+ m.position.set(x,y,noise(x,y)+.12);m.rotation.set(Math.random()*6,Math.random()*6,0);world.add(m);holds.push({pos:m.position,mesh:m,top})}
+function placePlayer(h){hand.position.set(h.pos.x,h.pos.y,h.pos.z+.2);body.position.set(h.pos.x,h.pos.y-.5,h.pos.z+.35);}
+
+/* ===== Gameplay ===== */
+function startChapter(c){
+ chap=c;buildChapter(c);stam=100;moves=0;maxP=0;shown=new Set();gust=6;state='play';t0=performance.now();
+ $('#menu').style.display='none';$('#cT').textContent='Cap. '+c.id+' — '+c.t;$('#cS').textContent=c.s;
+ gsap.fromTo('#hud',{opacity:0,y:-20},{opacity:1,y:0,duration:1.2});cam.position.set(0,2,16);
+ mono('Cap. '+c.id+' — '+c.t,2.5)}
+function move(dx,dy){
+ if(state!=='play')return;let best=null,bd=1e9;
+ for(const h of holds){if(h===cur)continue;const vx=h.pos.x-cur.pos.x,vy=h.pos.y-cur.pos.y,d=Math.hypot(vx,vy);
+  if(d<.4||d>2.4)continue;if((vx*dx+vy*dy)/d<.5)continue;if(d<bd){bd=d;best=h}}
+ if(!best)return gsap.fromTo(body.position,{x:cur.pos.x-.05},{x:cur.pos.x,duration:.2});
+ state='move';moves++;const cost=6+bd*2.5+chap.wind*4+chap.cold*3+(dy>0?2:0);stam=Math.max(0,stam-cost);
+ gsap.to(hand.position,{x:best.pos.x,y:best.pos.y,z:best.pos.z+.2,duration:.4,ease:'power2.out'});
+ gsap.to(body.position,{x:best.pos.x,y:best.pos.y-.5,z:best.pos.z+.35,duration:.5,ease:'power2.inOut',onComplete(){
+  cur=best;state='play';const pr=cur.pos.y/chap.H;maxP=Math.max(maxP,pr);story(pr);if(cur.top)summit();else if(!crewEv(pr)&&stam<=0)fall()}});}
+function mono(t,d=4){const e=$('#mono');e.textContent='';gsap.killTweensOf(e);const o={n:0};
+ gsap.timeline().to(e,{opacity:1,duration:.6}).to(o,{n:t.length,duration:Math.min(2.5,t.length*.05),ease:'none',onUpdate(){e.textContent=t.slice(0,o.n|0)}},'<').to(e,{opacity:0,duration:1.2,delay:d})}
+function story(pr){chap.m.forEach(([p,t],i)=>{if(pr>=p-.001&&!shown.has(i)&&p<1){shown.add(i);mono(t)}})}
+function wait(ms){return new Promise(r=>setTimeout(r,ms))}
+async function record(result){await db.ins('runs',{profile_id:uid,save_id:save?.id??null,chapter_id:chap.id,result,time_ms:Math.round(performance.now()-t0),moves,max_progress:+maxP.toFixed(3)})}
+async function summit(){
+ state='end';record('summit');mono(chap.m.at(-1)[1],5);
+ gsap.to(cam.position,{z:cam.position.z+8,y:cam.position.y+3,duration:4,ease:'power1.inOut'});
+ if(save){const nx=Math.max(save.chapters_unlocked,Math.min(6,chap.id+1));save.chapters_unlocked=nx;save.chapter_id=Math.min(6,chap.id+1);
+  await db.upd('save_games',save.id,{chapters_unlocked:nx,chapter_id:save.chapter_id,altitude:chap.base+chap.H*10,stamina:stam,updated_at:new Date().toISOString()})}
+ await wait(6500);openMenu()}
+async function fall(){
+ state='end';record('fall');mono('Minhas mãos... não respondem mais.',3);
+ gsap.to(body.position,{y:'-=40',z:'+=6',duration:1.6,ease:'power2.in'});gsap.to(hand.position,{y:'-=40',duration:1.6,ease:'power2.in'});
+ gsap.to(cam.position,{x:()=>(Math.random()-.5)*2,duration:.08,repeat:8,yoyo:true});
+ await wait(2800);startChapter(chap)}
+function openMenu(){state='menu';$('#menu').style.display='flex';gsap.fromTo('.card',{opacity:0,y:20},{opacity:1,y:0,duration:.8});renderMenu()}
+
+/* ===== CRUD de saves + menu ===== */
+async function renderMenu(){
+ const ss=await db.list('save_games');if(!save&&ss.length)save=ss[0];if(save)save=ss.find(s=>s.id==save.id)||ss[0]||null;
+ $('#slots').innerHTML='';
+ ss.forEach(s=>{const d=document.createElement('div');d.className='slot'+(save&&s.id==save.id?' on':'');
+  d.innerHTML=`<span>${esc(s.slot_name)} — arco ${s.chapters_unlocked}/7</span><button class="btn">usar</button><button class="btn">renomear</button><button class="btn">excluir</button>`;
+  const[b1,b2,b3]=d.querySelectorAll('button');b1.onclick=()=>{save=s;renderMenu()};
+  b2.onclick=async()=>{const n=prompt('Novo nome do save',s.slot_name);if(n){await db.upd('save_games',s.id,{slot_name:n});renderMenu()}};
+  b3.onclick=async()=>{if(confirm('Excluir este save?')){await db.del('save_games',s.id);if(save?.id==s.id)save=null;renderMenu()}};
+  $('#slots').append(d)});
+ const un=save?save.chapters_unlocked:1;$('#chs').innerHTML='';
+ CH.forEach(c=>{const b=document.createElement('button');b.className='btn ch';b.disabled=c.id>un;
+  b.innerHTML=`Cap. ${c.id} — ${c.t}<small>${c.s}</small>`;b.onclick=async()=>{if(!save)save=await db.ins('save_games',{profile_id:uid,slot_name:'Save '+(ss.length+1),chapter_id:1,chapters_unlocked:1,altitude:0,stamina:100});startChapter(c)};$('#chs').append(b)})}
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+$('#newSave').onclick=async()=>{const n=prompt('Nome do save','Mori — nova escalada');if(!n)return;
+ save=await db.ins('save_games',{profile_id:uid,slot_name:n,chapter_id:1,chapters_unlocked:1,altitude:0,stamina:100});renderMenu()};
+
+/* ===== Input ===== */
+const K={ArrowUp:[0,1],w:[0,1],ArrowDown:[0,-1],s:[0,-1],ArrowLeft:[-1,0],a:[-1,0],ArrowRight:[1,0],d:[1,0]};
+addEventListener('keydown',e=>{if(K[e.key])move(...K[e.key]);if(e.code==='Space'){resting=true;e.preventDefault()}});
+addEventListener('keyup',e=>{if(e.code==='Space')resting=false});
+document.querySelectorAll('.pad [data-k]').forEach(b=>b.onpointerdown=()=>move(...b.dataset.k.split(',').map(Number)));
+$('#rest').onpointerdown=()=>resting=true;addEventListener('pointerup',()=>resting=false);
+addEventListener('resize',()=>{R.setSize(innerWidth,innerHeight);cam.aspect=innerWidth/innerHeight;cam.updateProjectionMatrix()});
+
+addEventListener('blur',()=>resting=false);
+/* ===== Loop ===== */
+const clk=new THREE.Clock();
+function loop(){requestAnimationFrame(loop);const dt=Math.min(clk.getDelta(),.05),T=clk.elapsedTime;
+ if(state==='play'){
+  stam=Math.max(0,Math.min(100,stam+(resting?Math.max(8,24-chap.cold*8):-chap.cold*1.2)*dt));
+  if(stam<=0)fall();
+  gust-=dt;if(chap.wind>0&&gust<=0){gust=6+Math.random()*8;stam=Math.max(0,stam-9*chap.wind);
+   gsap.fromTo('#warn',{opacity:.9},{opacity:0,duration:1.8});gsap.fromTo(cam.position,{x:cam.position.x-.5},{x:cam.position.x,duration:.9,ease:'elastic.out(1,.4)'})}}
+ if(state==='cine')cam.lookAt(lookT);else if(cur){const tx=body.position.x*.35,ty=body.position.y+2.2+(state==='end'?0:0);
+  if(state!=='end'||true){cam.position.x+=(tx-cam.position.x)*Math.min(1,dt*3);cam.position.y+=(ty-cam.position.y)*Math.min(1,dt*2.5);
+   if(state!=='end')cam.position.z+=(9-cam.position.z)*Math.min(1,dt*1.5)}
+  cam.lookAt(body.position.x*.5,cam.position.y+1.4+Math.sin(T*.5)*.05,0)}
+ body.rotation.z=Math.sin(T*1.3)*.03;hand.children.forEach((h,i)=>h.position.y=.5+Math.sin(T*2+i)*.02);
+ const p=snow.geometry.attributes.position,w=chap.wind;
+ for(let i=0;i<p.count;i++){let x=p.getX(i)+(.6+w*3)*dt,y=p.getY(i)-(.8+w)*dt;
+  if(y<cam.position.y-12)y=cam.position.y+12;if(x>cam.position.x+20)x-=40;p.setXYZ(i,x,y,p.getZ(i))}
+ p.needsUpdate=true;snow.material.opacity=chap.cold>.2||chap.wind>.3?.85:.0;
+ $('#st').style.width=stam+'%';$('#stl').textContent=Math.round(stam)+'%'+(resting&&state==='play'?'  ▲ DESCANSANDO':'');$('#st').style.background=stam<25?'#ff3b2f':'#d94f3d';
+ const y=body.position.y;$('#alt').textContent=Math.max(0,Math.round(chap.base+y*10)).toLocaleString('pt-BR')+' m';
+ R.render(scene,cam)}
+(async()=>{await initDb();buildChapter(CH[0]);cam.position.set(0,6,18);openMenu();loop()})();
+</script>
+<script>
+/* ===== CINEMÁTICAS: motor de cenas, travessia (Niimi/Kase/Kaneda), cume ===== */
+CH.push({id:7,t:'A Travessia',s:'Neve, perda e a cabana',H:40,base:3000,wind:.9,cold:.9,sky:['#0d1622','#8da4ba'],rock:'#7e8c99',
+ ev:[[.25,'kaneda'],[.5,'kase'],[.72,'cabin']],
+ m:[[.12,'Quatro entraram na travessia. A neve ia contando um por um.'],[.85,'Agora só existia o som das próprias botas.'],[1,'Chegou ao fim da cordilheira. Sozinho.']]});
+const lookT=new THREE.Vector3();let crew=null,evd=new Set();
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+function say(who,t,d){const e=$('#sub');gsap.killTweensOf(e);e.innerHTML=(who?'<b>'+who+'</b>':'')+t;gsap.fromTo(e,{opacity:0},{opacity:1,duration:.6});gsap.to(e,{opacity:0,duration:.6,delay:Math.max(.5,d-.6)})}
+function shot(s){return new Promise(r=>{const e=s.e||'power1.inOut',tl=gsap.timeline({onComplete:r});
+ tl.to(cam.position,{x:s.p[0],y:s.p[1],z:s.p[2],duration:s.d,ease:e},0).to(lookT,{x:s.l[0],y:s.l[1],z:s.l[2],duration:s.d,ease:e},0);
+ if(s.f)tl.to(cam,{fov:s.f,duration:s.d,ease:e,onUpdate:()=>cam.updateProjectionMatrix()},0);if(s.t)say(s.who,s.t,s.d)})}
+function beginCine(){state='cine';lookT.set(body.position.x,body.position.y,0);gsap.to('.cb',{height:'12vh',duration:1});gsap.to('#hud,.pad',{opacity:0,duration:.6})}
+function endCine(){gsap.to('.cb',{height:0,duration:1});gsap.to('#hud,.pad',{opacity:1,duration:.8});cam.fov=55;cam.updateProjectionMatrix();$('#sub').textContent='';state='play'}
+function fig(col){const g=new THREE.Group(),M=c=>new THREE.MeshStandardMaterial({color:c,roughness:.8}),
+ t=new THREE.Mesh(new THREE.BoxGeometry(.5,.8,.3),M(col)),h=new THREE.Mesh(new THREE.SphereGeometry(.2,14,10),M(0xdcb898)),l=new THREE.Mesh(new THREE.BoxGeometry(.4,.8,.25),M(0x2b3446));
+ t.position.y=-.3;h.position.y=.3;l.position.y=-1.1;g.add(t,h,l);return g}
+const OFF={kaneda:[-1.8,-1.5],kase:[1.9,-2.4],niimi:[.2,-1.7]};
+const _build=buildChapter;buildChapter=c=>{_build(c);evd=new Set();crew=null;
+ if(c.ev){crew={kaneda:fig(0xd9b32e),kase:fig(0x2f7d4f),niimi:fig(0x2d5fa8)};for(const k in crew){crew[k].position.set(cur.pos.x+OFF[k][0],cur.pos.y+OFF[k][1],.7);world.add(crew[k])}}};
+gsap.ticker.add(()=>{if(!crew||!cur||state==='cine')return;for(const k in crew){const f=crew[k];if(!f)continue;
+ f.position.x+=(cur.pos.x+OFF[k][0]-f.position.x)*.03;f.position.y+=(cur.pos.y+OFF[k][1]-f.position.y)*.03}});
+function crewEv(pr){if(!chap.ev)return false;for(const[p,k]of chap.ev)if(pr>=p&&!evd.has(k)){evd.add(k);({kaneda:lostKaneda,kase:lostKase,cabin:cabin})[k]();return true}return false}
+
+async function lostKaneda(){beginCine();const f=crew.kaneda,b=f.position;
+ await shot({p:[b.x+2,b.y+.5,5],l:[b.x,b.y,0],d:3,f:40,who:'Kaneda',t:'“O gelo está soltando... segurem!”'});
+ gsap.to(f.position,{y:'-=70',duration:2.4,ease:'power2.in'});gsap.to(f.rotation,{z:3.5,duration:2.4});
+ gsap.fromTo(cam.position,{x:'+=.3'},{x:'-=.3',duration:.07,repeat:10,yoyo:true});
+ await shot({p:[b.x+2,b.y-1,6],l:[b.x,b.y-5,0],d:3,t:'Kaneda sumiu na brancura, sem tempo de gritar.'});
+ crew.kaneda=null;endCine()}
+async function lostKase(){beginCine();const f=crew.kase,b=f.position;
+ await shot({p:[b.x-2,b.y+.3,5],l:[b.x,b.y,0],d:3.5,f:38,who:'Kase',t:'“Podem seguir. Eu só preciso descansar um instante.”'});
+ gsap.to(scene.fog,{far:7,duration:2});gsap.to(f.position,{z:-25,x:'+=3',duration:2.8});
+ await shot({p:[b.x-1,b.y+.2,6],l:[b.x+2,b.y,-4],d:3.5,t:'Kase foi engolido pela nevasca. Mori ainda estendeu a mão para o vazio.'});
+ crew.kase=null;gsap.to(scene.fog,{far:200,duration:1.2});endCine()}
+
+async function cabin(){beginCine();const O={x:500},G=new THREE.Group();G.position.x=O.x;scene.add(G);
+ const vis=[world,body,hand,snow];vis.forEach(o=>o.visible=false);if(crew)for(const k in crew)if(crew[k])crew[k].visible=false;
+ const bg=scene.background,fg=scene.fog,hi=hemi.intensity,si=sun.intensity;scene.background=new THREE.Color(0x070504);scene.fog=new THREE.Fog(0x070504,4,16);
+ gsap.to(hemi,{intensity:.12,duration:1});sun.intensity=0;
+ const wood=new THREE.MeshStandardMaterial({color:0x3b2a1e,roughness:.9,side:THREE.DoubleSide}),
+ box=(w,h,d,x,y,z,m=wood)=>{const k=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),m);k.position.set(x,y,z);G.add(k);return k};
+ box(7,.2,5,0,0,0);box(7,.2,5,0,3,0);box(.2,3,5,-3.5,1.5,0);box(.2,3,5,3.5,1.5,0);box(7,3,.2,0,1.5,-2.5);
+ box(2,.4,.8,-.9,.35,0,new THREE.MeshStandardMaterial({color:0xc2541f,roughness:.9}));
+ const nh=new THREE.Mesh(new THREE.SphereGeometry(.22,14,10),new THREE.MeshStandardMaterial({color:0xcfa889}));nh.position.set(-1.9,.6,0);G.add(nh);
+ const mo=fig(0xc43d2e);mo.scale.setScalar(.85);mo.position.set(.4,1.3,.5);mo.rotation.set(.25,-1.2,0);G.add(mo);
+ const L=new THREE.PointLight(0xffa24a,2.6,10);L.position.set(0,2.2,0);G.add(L);
+ lookT.set(O.x-.3,.9,0);cam.position.set(O.x+.5,1.5,5);
+ await shot({p:[O.x,1.6,3.6],l:[O.x-.5,.8,0],d:5,f:50,t:'A cabana rangia sob o vento. Lá fora, a nevasca não tinha pressa.'});
+ await shot({p:[O.x-1,1.1,1.8],l:[O.x-1.9,.6,0],d:4.5,f:34,who:'Niimi',t:'“Mori... eu já não sinto os pés. Está tudo tão quieto.”'});
+ await shot({p:[O.x+.2,1.5,1.6],l:[O.x+.4,1.35,0],d:4,f:32,who:'Mori',t:'“Aguenta. Quando amanhecer, a gente desce juntos.”'});
+ await shot({p:[O.x-1.2,1,1.2],l:[O.x-1.9,.6,0],d:6,f:26,who:'Niimi',t:'“Nós dois sabemos que não vai ser assim. Só me prometa uma coisa: não me deixe sozinho.”'});
+ await shot({p:[O.x+.9,1.5,1.4],l:[O.x+.4,1.35,0],d:4.5,f:24,who:'Mori',t:'“Eu fico. Pode descansar. Eu fico aqui com você.”'});
+ gsap.to(L,{intensity:.25,duration:8});
+ await shot({p:[O.x-1.3,1.2,1.5],l:[O.x-1.9,.6,0],d:7,f:22,t:'A respiração dele foi ficando cada vez mais espaçada, até que não houve mais nenhuma.'});
+ await shot({p:[O.x,2.2,5],l:[O.x,1,0],d:6,f:55,t:'Mori ficou. Como tinha prometido.'});
+ gsap.to('#fade',{opacity:1,duration:1.5});await sleep(1700);
+ scene.remove(G);vis.forEach(o=>o.visible=true);if(crew){for(const k in crew)if(crew[k])crew[k].visible=true;if(crew.niimi){crew.niimi.visible=false;crew.niimi=null}}
+ scene.background=bg;scene.fog=fg;hemi.intensity=hi;sun.intensity=si;stam=100;
+ cam.position.set(body.position.x,body.position.y+2.2,9);endCine();gsap.to('#fade',{opacity:0,duration:2});
+ mono('Daqui em diante, cada passo era dele. E de mais ninguém.',4)}
+
+async function summit(){record('summit');beginCine();const b=body.position.clone(),bt={x:b.x,y:b.y+1.4,z:b.z+.5};
+ if(save){const nx=Math.min(7,Math.max(save.chapters_unlocked,chap.id+1));save.chapters_unlocked=nx;save.chapter_id=Math.min(7,chap.id+1);
+  db.upd('save_games',save.id,{chapters_unlocked:nx,chapter_id:save.chapter_id,altitude:chap.base+chap.H*10,stamina:stam,updated_at:new Date().toISOString()})}
+ hand.visible=false;gsap.to(body.position,{y:bt.y,z:bt.z,duration:2.5,ease:'power2.out'});
+ lookT.set(b.x,b.y,-60);cam.position.set(b.x+2.5,b.y+1,b.z+9);
+ await shot({p:[b.x,b.y+2.8,b.z+4.5],l:[b.x,b.y+1,-90],d:7,f:46,t:chap.m.at(-1)[1]});          /* plano aberto: a vista, de costas */
+ gsap.to(body.rotation,{y:Math.PI*.8,duration:2.5,ease:'power2.inOut'});
+ await shot({p:[bt.x-.7,bt.y+.35,bt.z+1.4],l:[bt.x,bt.y+.3,bt.z],d:5,f:26,t:'Lá embaixo, ninguém sabia o nome dele. Ali em cima, a montanha sabia.'}); /* close dramático */
+ await shot({p:[bt.x-.3,bt.y+.33,bt.z+.65],l:[bt.x,bt.y+.32,bt.z],d:5,f:20,e:'power2.out',t:'Os olhos de quem já tinha perdido tudo... e ainda subia.'});
+ await sleep(1200);gsap.to('#fade',{opacity:1,duration:1.4});await sleep(1500);
+ hand.visible=true;body.rotation.y=0;endCine();openMenu();gsap.to('#fade',{opacity:0,duration:1.5})}
+</script><script>
+/* ===== ATO II: personagens, conversas, avalanche, Niimi, mensagem ===== */
+let ac=null,seen=new Set();
+function snd(d,f,v){try{ac=ac||new(window.AudioContext||window.webkitAudioContext)();const n=ac.createBuffer(1,ac.sampleRate*d,ac.sampleRate),a=n.getChannelData(0);let l=0;
+ for(let i=0;i<a.length;i++){l=(l+.02*(Math.random()*2-1))/1.02;a[i]=l*3.5}
+ const s=ac.createBufferSource(),fl=ac.createBiquadFilter(),g=ac.createGain(),t=ac.currentTime;s.buffer=n;fl.type='lowpass';fl.frequency.value=f;
+ g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(v,t+d*.4);g.gain.linearRampToValueAtTime(0,t+d);s.connect(fl).connect(g).connect(ac.destination);s.start()}catch(e){}}
+const rd=t=>Math.max(2.6,1.5+t.length*.058);
+const shake=(a,n)=>gsap.fromTo(R.domElement,{x:-a},{x:a,duration:.05,repeat:n,yoyo:true,ease:'none',onComplete:()=>gsap.set(R.domElement,{x:0})});
+async function T(f,w,t,fv=34){const q=(f||body).position,s=q.x>body.position.x?1:-1;
+ await shot({p:[q.x-s*1.2,q.y+.5,3.8],l:[q.x,q.y+.2,0],d:rd(t),f:fv,who:w,t})}
+const run=async(A,L)=>{for(const[i,w,t,f]of L)await T(i<0?body:A[i],w,t,f)};
+const sp=(dx,c)=>{const f=fig(c);f.position.set(cur.pos.x+dx,cur.pos.y-.5,.7);world.add(f);return f};
+
+/* Cenas de abertura de cada arco */
+const SC={
+1:async()=>{const m=sp(1.9,0xdedede);await run([m],[
+ [0,'Miyamoto','“Ei, o transferido. Dizem que você não fala com ninguém.”'],
+ [-1,'','Falar nunca me salvou de nada. Ficar calado, pelo menos, doía menos.'],
+ [0,'Miyamoto','“Aposto que você não tem coragem de subir esse prédio. Pelo lado de fora.”'],
+ [-1,'Mori','“...Por que eu faria isso?”'],
+ [0,'Miyamoto','“Porque aqui ninguém vai te ver de outro jeito se você não fizer.”'],
+ [-1,'','Não foi coragem. Foi o único lugar onde ninguém podia me alcançar.']])},
+2:async()=>{const m=sp(1.9,0xe0a030);await run([m],[
+ [0,'Miyamoto','“Rocha não quer saber quem você é. Só quer saber onde você põe a mão.”'],
+ [-1,'Mori','“Isso eu entendo.”'],
+ [0,'Miyamoto','“Você sorriu! Anota aí: o Mori sorriu!”'],
+ [-1,'','Pela primeira vez, alguém esperou eu terminar a frase. Mesmo quando eu não terminava.']])},
+3:async()=>{const m=sp(1.9,0x8a8f99);await run([m],[
+ [0,'Colega de obra','“Você some todo fim de semana. Tem alguém te esperando em algum lugar?”'],
+ [-1,'Mori','“A montanha.”'],
+ [0,'Colega de obra','“Isso não é resposta, garoto.”'],
+ [-1,'','É a única que eu tenho. Solidão imposta fere. Solidão escolhida... ainda fere, mas é minha.']])},
+4:async()=>{const m=sp(1.9,0x6d6d73);await run([m],[
+ [-1,'Mori','“Miyamoto. Foi você quem me fez subir aquele prédio.”'],
+ [0,'Miyamoto','“Foi. E fiquei no chão olhando você crescer. Sabe como dói isso?”'],
+ [-1,'Mori','“Então vem comigo. Eu espero.”'],
+ [0,'Miyamoto','“Você não espera ninguém, Mori. Nem devia.”'],
+ [-1,'','Eu esperaria. Mas ele já tinha decidido por nós dois.']])},
+5:async()=>{const m=sp(1.9,0x2d5fa8);await run([m],[
+ [0,'Niimi','“Mori! Vi você escalando aquela fenda. Quero subir contigo, nem que seja carregando sua mochila!”'],
+ [-1,'Mori','“Eu escalo sozinho.”'],
+ [0,'Niimi','“Eu sei. Mas ninguém devia ser só isso.”'],
+ [-1,'','Ele falava como quem acredita nas pessoas. Eu tinha esquecido que isso existia.']])},
+6:async()=>{gsap.to('#fade',{opacity:1,duration:1.2});await sleep(1300);
+ for(const[w,t]of[['Miyamoto','“Sobe, Mori. Por mim também.”'],['Kaneda','“Minha filha faz aniversário semana que vem...”'],['Kase','“Diz pro Niimi que ele escalava bonito.”'],['Niimi','“Não me deixe sozinho.”'],['','K2. Face Leste. Quatro nomes que eu carrego morro acima.']]){say(w,t,rd(t));await sleep(rd(t)*1000+300)}
+ gsap.to('#fade',{opacity:0,duration:1.5})}};
+const _sc=startChapter;
+startChapter=function(c){_sc(c);const s=SC[c.id];if(!s||seen.has(c.id))return;seen.add(c.id);
+ gsap.killTweensOf('#hud,.pad,#mono');$('#mono').style.opacity=0;beginCine();cam.position.set(body.position.x,body.position.y+1,9);s().then(endCine)};
+
+/* Travessia: acampamento, avalanche, Kase, cabana */
+CH[6].ev=[[.1,'camp'],[.25,'kaneda'],[.5,'kase'],[.72,'cabin']];
+function crewEv(pr){if(!chap.ev)return false;for(const[p,k]of chap.ev)if(pr>=p&&!evd.has(k)){evd.add(k);({camp,kaneda:lostKaneda,kase:lostKase,cabin})[k]();return true}return false}
+async function camp(){beginCine();const A=[crew.kaneda,crew.kase,crew.niimi];await run(A,[
+ [0,'Kaneda','“Vinte anos nessa serra. A montanha não odeia ninguém. Ela só não se importa.”'],
+ [1,'Kase','“Nunca fui o melhor de nós. Mas nunca fui embora. Acho que isso também é um jeito de escalar.”'],
+ [2,'Niimi','“Quando descermos, eu pago o jantar. Você vem, Mori. Não vale fugir de gente.”'],
+ [-1,'Mori','“...Eu vou.”'],
+ [0,'Kaneda','“Minha filha faz aniversário semana que vem. Prometi estar lá. Então ninguém morre aqui, certo?”'],
+ [2,'Niimi','“Certo!”']]);endCine()}
+async function lostKaneda(){beginCine();const f=crew.kaneda,b=f.position.clone();
+ await T(f,'Kaneda','“Escutem... isso não é vento.”',36);
+ snd(8,240,.9);$('#warn').textContent='AVALANCHE';gsap.fromTo('#warn',{opacity:1},{opacity:0,duration:4});shake(9,60);
+ const W=new THREE.Mesh(new THREE.PlaneGeometry(80,50),new THREE.MeshBasicMaterial({color:0xf4f8ff,transparent:true,opacity:0,fog:false}));W.position.set(b.x,b.y+30,-45);scene.add(W);
+ gsap.to(scene.fog,{far:6,duration:3});gsap.to(W.position,{z:7,y:b.y+3,duration:3.4,ease:'power3.in'});gsap.to(W.material,{opacity:.95,duration:3.2,ease:'power2.in'});
+ await shot({p:[b.x+1,b.y+1.4,6],l:[b.x,b.y+6,-25],d:2.6,f:62,t:'Um rugido desceu da crista. A montanha inteira decidiu se mover.'});
+ gsap.to(f.position,{x:'+=2',y:'-=60',z:'-=8',duration:2.4,ease:'power2.in'});gsap.to(f.rotation,{z:4,duration:2.4});
+ await shot({p:[b.x,b.y,5],l:[b.x+1,b.y-6,0],d:2.2,f:38,who:'Kaneda',t:'“Mori! A corda—!”'});
+ gsap.to('#fade',{opacity:1,duration:.4,ease:'none'});await sleep(600);
+ scene.remove(W);scene.fog.far=200;$('#warn').textContent='VENTO';crew.kaneda=null;
+ await sleep(1800);say('','Silêncio. Um silêncio que pesava mais que a neve.',4.5);await sleep(4600);
+ gsap.to('#fade',{opacity:0,duration:2});
+ await run([crew.niimi,crew.kase],[
+ [0,'Niimi','“KANEDA!! Responde, Kaneda!!”'],
+ [1,'Kase','“Ele estava ali... agora há pouco. Estava bem aqui.”'],
+ [-1,'','Dez segundos. Foi o que a montanha precisou para levar uma filha de volta a um pai que nunca chegou.']]);
+ endCine()}
+async function lostKase(){beginCine();const f=crew.kase;await run([f],[
+ [0,'Kase','“Podem ir na frente. Eu só preciso sentar um instante.”'],
+ [-1,'Mori','“Levanta, Kase. Você disse que nunca foi embora.”'],
+ [0,'Kase','“E não fui. Só cansei de ser o último a chegar. Diz pro Niimi que ele escalava bonito.”']]);
+ const b=f.position;gsap.to(scene.fog,{far:7,duration:2});gsap.to(f.position,{z:-25,x:'+=3',duration:2.8});
+ await shot({p:[b.x-1,b.y+.2,6],l:[b.x+2,b.y,-4],d:4,t:'Kase foi engolido pela nevasca. Mori ainda estendeu a mão para o vazio.'});
+ crew.kase=null;gsap.to(scene.fog,{far:200,duration:1.2});endCine()}
+
+async function cabin(){beginCine();const O={x:500},G=new THREE.Group();G.position.x=O.x;scene.add(G);
+ const vis=[world,body,hand,snow];vis.forEach(o=>o.visible=false);if(crew)for(const k in crew)if(crew[k])crew[k].visible=false;
+ const bg=scene.background,fg=scene.fog,hi=hemi.intensity,si=sun.intensity;scene.background=new THREE.Color(0x070504);scene.fog=new THREE.Fog(0x070504,4,16);
+ gsap.to(hemi,{intensity:.12,duration:1});sun.intensity=0;
+ const wood=new THREE.MeshStandardMaterial({color:0x3b2a1e,roughness:.9,side:THREE.DoubleSide}),
+ box=(w,h,d,x,y,z,m=wood)=>{const k=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),m);k.position.set(x,y,z);G.add(k)};
+ box(7,.2,5,0,0,0);box(7,.2,5,0,3,0);box(.2,3,5,-3.5,1.5,0);box(.2,3,5,3.5,1.5,0);box(7,3,.2,0,1.5,-2.5);
+ box(2,.4,.8,-.9,.35,0,new THREE.MeshStandardMaterial({color:0xc2541f,roughness:.9}));
+ const nh=new THREE.Mesh(new THREE.SphereGeometry(.22,14,10),new THREE.MeshStandardMaterial({color:0xcfa889}));nh.position.set(-1.9,.6,0);G.add(nh);
+ const mo=fig(0xc43d2e);mo.scale.setScalar(.85);mo.position.set(.4,1.3,.5);mo.rotation.set(.25,-1.2,0);G.add(mo);
+ const L=new THREE.PointLight(0xffa24a,2.6,10);L.position.set(0,2.2,0);G.add(L);
+ lookT.set(O.x-.3,.9,0);cam.position.set(O.x+.5,1.5,5);snd(30,300,.25);
+ const S=(p,l,f,w,t)=>shot({p,l,d:rd(t||'x'),f,who:w,t}),
+ N=(f,w,t)=>S([O.x-1,1.1,1.8],[O.x-1.9,.6,0],f,w,t),M=(f,w,t)=>S([O.x+.2,1.5,1.6],[O.x+.4,1.35,0],f,w,t);
+ await S([O.x,1.6,3.6],[O.x-.5,.8,0],50,'','A cabana rangia sob o vento. Dentro, só dois homens e uma lamparina.');
+ await N(34,'Niimi','“Mori... eu já não sinto os pés. Mas olha como está quieto aqui.”');
+ await M(32,'Mori','“Aguenta. Quando amanhecer, a gente desce juntos.”');
+ await N(30,'Niimi','“Lembra que você dizia que escalava sozinho? Foi a melhor mentira que ouvi. Você nunca esteve sozinho. Só não sabia ver.”');
+ await M(26,'','Miyamoto no chão olhando para cima. Kaneda no branco. Kase sentado na neve. Todos que eu não consegui segurar.');
+ $('#sub').style.transform='scaleX(-1)';await N(24,'Niimi','“...Mori, o prédio... tão alto... o Miyamoto está rindo lá em cima...”');$('#sub').style.transform='';
+ await N(22,'Niimi','“Prometa uma coisa. Não me deixe sozinho.”');
+ await M(24,'Mori','“Eu fico. Pode descansar. Eu fico aqui com você.”');
+ const mn=$('#mono');gsap.killTweensOf(mn);mn.style.opacity=1;let h=0,msg=0;gsap.to(L,{intensity:.2,duration:16});
+ await S([O.x-1.3,1.2,1.5],[O.x-1.9,.6,0],20);
+ while(h<7){mn.textContent='SEGURE A MÃO DELE — ESPAÇO / TOQUE   '+'▮'.repeat(h|0)+'▯'.repeat(7-(h|0));
+  if(resting)h+=.1;else if(!msg&&h>1){msg=1;say('Niimi','“...Mori? Você ainda está aí?”',3)}await sleep(100)}
+ mn.style.opacity=0;
+ await S([O.x-1.3,1.2,1.5],[O.x-1.9,.6,0],22,'','A respiração dele foi ficando espaçada, até que não houve mais nenhuma.');
+ snd(5,500,.6);shake(7,40);$('#warn').textContent='NIIMI!!';$('#warn').style.color='#ff5a4a';gsap.fromTo('#warn',{opacity:1},{opacity:0,duration:3.5});
+ await S([O.x+.1,1.5,1.2],[O.x+.4,1.3,0],18,'Mori','“NIIMI!! ...Niimi... responde...”');
+ await S([O.x,1.4,1.0],[O.x+.4,1.3,0],16,'','Ele gritou até a garganta rasgar. A montanha não respondeu. Nunca responde.');
+ await S([O.x,2.2,5],[O.x,1,0],55,'','Mori ficou. Como tinha prometido.');
+ $('#warn').textContent='VENTO';$('#warn').style.color='';
+ gsap.to('#fade',{opacity:1,duration:1.5});await sleep(1700);
+ scene.remove(G);vis.forEach(o=>o.visible=true);if(crew){for(const k in crew)if(crew[k])crew[k].visible=true;if(crew.niimi){crew.niimi.visible=false;crew.niimi=null}}
+ scene.background=bg;scene.fog=fg;hemi.intensity=hi;sun.intensity=si;stam=100;
+ cam.position.set(body.position.x,body.position.y+2.2,9);endCine();gsap.to('#fade',{opacity:0,duration:2});
+ mono('Daqui em diante, cada passo era dele. E de mais ninguém.',4)}
+
+/* Mensagem final */
+const _sm=summit;
+summit=async function(){if(chap.id===7){beginCine();gsap.to('#fade',{opacity:1,duration:2});await sleep(2200);
+ for(const t of['Subir não é provar nada ao mundo. É descobrir quem você é quando não resta ninguém olhando.',
+ 'A solidão de Mori nunca foi ausência de gente. Era o peso de cada rosto que ele carregou montanha acima.',
+ 'Miyamoto. Kaneda. Kase. Niimi. Nenhum deles virou número. Todos viraram altitude.',
+ 'E você, que segurou a mão dele até o fim: quem está esperando que você não solte?']){say('',t,rd(t)+1);await sleep((rd(t)+1.4)*1000)}
+ gsap.to('#fade',{opacity:0,duration:1.5})}
+ return _sm()};
+
+/* Mais pensamentos, para a subida respirar */
+const X={1:[[.5,'Cada apoio é uma pergunta. E eu continuo respondendo que sim.']],2:[[.25,'Miyamoto riu. Alguém riu comigo, e não de mim.']],
+3:[[.7,'Trabalhar, subir, voltar ao quarto vazio. A montanha era o único lugar que me chamava pelo nome.']],
+4:[[.3,'Esperei que ele me alcançasse. Ele nunca tirou os pés do chão.']],5:[[.25,'Eu preciso do frio. Ele cala as vozes. Só que também cala as pessoas.'],[.8,'O Niimi acreditava em mim mais do que eu acreditava.']],
+6:[[.15,'Eles estão em cada fenda. Cada apoio é um nome.'],[.55,'Se eu soltar, ninguém sabe que eles existiram.']],7:[[.18,'O Kaneda tinha uma filha. A neve não sabe ler fotografias.'],[.6,'Foram três a menos. Mas eu continuo contando quatro.']]};
+for(const c of CH)(X[c.id]||[]).forEach(e=>c.m.splice(c.m.length-1,0,e));
+renderMenu(); /* o menu inicial era desenhado antes do arco 7 existir */
+</script>
+</body></html>
